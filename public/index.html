@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=1080, height=1920, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>TikTok Live: İzleyiciler (Türkiye) vs Yapay Zeka Botu (1080x1920)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Rajdhani:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="stage-wrapper">
+    <div id="game-container">
+      <!-- 2D Yarış Canvas (1080x1920) -->
+      <canvas id="raceCanvas" width="1080" height="1920"></canvas>
+
+      <!-- ÜST HUD: SKORLAR, 10.000M İLERLEME VE TELEMETRİ -->
+      <header class="hud-top">
+        <div class="status-bar">
+          <div id="connection-badge" class="badge badge-test">
+            <span class="dot"></span>
+            <span id="connection-text">TEST MODU AKTİF</span>
+          </div>
+
+          <div class="round-indicator">
+            TUR <span id="round-number">1</span>
+          </div>
+
+          <button id="audio-toggle-btn" class="audio-btn" title="Sesi Aç/Kapat (M)">
+            <span id="audio-icon">🔊</span> <span id="audio-text">SES AÇIK [M]</span>
+          </button>
+
+          <div class="target-flag-badge">
+            HEDEF: <strong>10.000M</strong>
+          </div>
+        </div>
+
+        <!-- ADRENALİN & DİNAMİK UYARI BANNERI (PANİK TETİKLEYİCİ) -->
+        <div id="panic-banner" class="panic-banner banner-leader-tr">
+          <span id="panic-banner-text">🇹🇷 TÜRKİYE LİDERLİĞİ ALDI!</span>
+        </div>
+
+        <!-- İki Tarafın Kartları (Türkiye vs Bot) -->
+        <div class="teams-hud">
+          <!-- SOL TARAF: İZLEYİCİLER / TÜRKİYE -->
+          <div class="team-card team-tr">
+            <div class="team-header">
+              <div class="team-flag flag-tr">
+                <!-- Ay-Yıldız Bayrak SVG -->
+                <svg viewBox="0 0 120 80" class="flag-svg">
+                  <rect width="120" height="80" rx="8" fill="#E30A17"/>
+                  <circle cx="48" cy="40" r="20" fill="#ffffff"/>
+                  <circle cx="53" cy="40" r="16" fill="#E30A17"/>
+                  <polygon points="72,40 85,44 77,33 77,47 85,36" fill="#ffffff" transform="rotate(-15 78 40)"/>
+                </svg>
+              </div>
+              <div class="team-info">
+                <div class="team-name">TÜRKİYE</div>
+                <div class="team-sub">TÜM İZLEYİCİLER</div>
+              </div>
+              <div class="team-score" id="tr-wins">0</div>
+            </div>
+
+            <!-- 10.000m İlerleme Barı -->
+            <div class="meter-bar-wrap">
+              <div class="meter-bar-fill tr-fill" id="tr-progress-bar" style="width: 0%;"></div>
+              <span class="meter-bar-label" id="tr-distance-text">0 / 10.000M</span>
+            </div>
+
+            <div class="telemetry-row">
+              <span class="speed-badge"><strong id="tr-speed">120</strong> KM/S</span>
+              <span class="boost-badge" id="tr-boost-status">🇹🇷 TAM GAZ</span>
+            </div>
+          </div>
+
+          <!-- VS Göstergesi -->
+          <div class="vs-circle">VS</div>
+
+          <!-- SAĞ TARAF: YAPAY ZEKA BOTU (RAKİP) -->
+          <div class="team-card team-bot">
+            <div class="team-header">
+              <div class="team-score" id="bot-wins">0</div>
+              <div class="team-info align-right">
+                <div class="team-name">BOT RAKİP</div>
+                <div class="team-sub">YAPAY ZEKA 🤖</div>
+              </div>
+              <div class="team-flag flag-rival">
+                <!-- Yunanistan / Mavi Çizgili Rakip SVG -->
+                <svg viewBox="0 0 120 80" class="flag-svg">
+                  <rect width="120" height="80" rx="8" fill="#0D5EAF"/>
+                  <!-- Yatay beyaz çizgiler -->
+                  <rect y="9" width="120" height="9" fill="#ffffff"/>
+                  <rect y="27" width="120" height="9" fill="#ffffff"/>
+                  <rect y="45" width="120" height="9" fill="#ffffff"/>
+                  <rect y="63" width="120" height="9" fill="#ffffff"/>
+                  <!-- Sol üst mavi kare ve beyaz haç -->
+                  <rect width="45" height="45" rx="4" fill="#0D5EAF"/>
+                  <rect x="18" width="9" height="45" fill="#ffffff"/>
+                  <rect y="18" width="45" height="9" fill="#ffffff"/>
+                </svg>
+              </div>
+            </div>
+
+            <!-- 10.000m İlerleme Barı -->
+            <div class="meter-bar-wrap">
+              <div class="meter-bar-fill bot-fill" id="bot-progress-bar" style="width: 0%;"></div>
+              <span class="meter-bar-label" id="bot-distance-text">0 / 10.000M</span>
+            </div>
+
+            <div class="telemetry-row">
+              <span class="speed-badge"><strong id="bot-speed">120</strong> KM/S</span>
+              <span class="bot-badge" id="bot-tension-text">🤖 ADRENALİN MOTORU</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- HEDİYE VE KURAL REHBERİ ŞERİDİ -->
+        <div class="gift-legend">
+          <div class="legend-item">❤️ <span><strong>15 Beğeni</strong> = Kalıcı +5 Hız</span></div>
+          <div class="legend-item highlight-rose">🌹 <span><strong>Gül</strong> = Kalıcı +50 Hız</span></div>
+          <div class="legend-item highlight-mvp">🪄 <span><strong>Asa vb.</strong> = +500 Hız (Milli Kahraman)</span></div>
+          <div class="legend-item highlight-troll">🍦 <span><strong>Dondurma</strong> = Bot'a +100 Hız (Trol)</span></div>
+        </div>
+      </header>
+
+      <!-- 👑 MİLLİ KAHRAMAN / MVP POP-UP (BÜYÜK HEDİYE) -->
+      <div id="mvp-banner" class="mvp-banner hidden">
+        <div class="mvp-glow"></div>
+        <div class="mvp-badge-title">👑 MİLLİ KAHRAMAN / MVP! 👑</div>
+        <div class="mvp-content">
+          <img id="mvp-avatar" src="https://api.dicebear.com/7.x/bottts/svg?seed=MVP" alt="MVP Avatar" class="mvp-avatar" />
+          <div class="mvp-details">
+            <div id="mvp-username" class="mvp-username">@MilliKahraman</div>
+            <div id="mvp-gift-info" class="mvp-gift-info">🪄 Büyülü Asa Gönderdi! (+500 KALICI HIZ)</div>
+            <div id="mvp-team-tag" class="mvp-team-tag">🇹🇷 TÜRKİYE ARACINA DEVASA GÜÇ SAĞLADI!</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 🍦 TROL KAPISI UYARISI -->
+      <div id="troll-banner" class="troll-banner hidden">
+        <div class="troll-content">
+          <span class="troll-icon">🍦</span>
+          <div class="troll-details">
+            <div class="troll-title">⚠️ TROL SALDIRISI! BOTA DONDURMA ATILDI!</div>
+            <div id="troll-sender" class="troll-sender">@Kullanici Bot'a +100 Hız Kazandırdı!</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TUR SONU (10.000M KAZANILDI) EKRANI -->
+      <div id="winner-overlay" class="winner-overlay hidden">
+        <div class="winner-card">
+          <div id="winner-crown" class="winner-crown">🏆 10.000M TAMAMLANDI! 🏆</div>
+          <div id="winner-flag-box" class="winner-flag-box"></div>
+          <h1 id="winner-team-title" class="winner-team-title">TÜRKİYE KAZANDI!</h1>
+          <p id="winner-subtitle" class="winner-subtitle">Bu Turun En Çok Hız Kazandıran İlk 3 Milli Kahramanı</p>
+
+          <div id="winner-leaderboard" class="winner-leaderboard">
+            <!-- JS ile dinamik doldurulur -->
+          </div>
+
+          <div class="next-round-timer">
+            Yeni Tur Başlıyor: <span id="countdown-seconds">5</span> sn
+          </div>
+        </div>
+      </div>
+
+      <!-- GELİŞTİRİCİ / TEST KONTROL PANELİ (H Tuşu ile Gizlenebilir, ?obs=true ile otomatik gizlenir) -->
+      <aside id="test-panel" class="test-panel">
+        <div class="test-panel-header">
+          <div class="test-title-group">
+            <span>🛠️ CANLI SİMÜLASYON & TEST PANELİ</span>
+            <div class="tiktok-connect-box">
+              <input type="text" id="tiktok-user-input" placeholder="TikTok @kullanici_adi" />
+              <button id="tiktok-connect-btn">YAYINA BAĞLAN</button>
+            </div>
+          </div>
+          <button id="toggle-test-btn" title="Paneli Gizle/Göster (H)">Gizle [H]</button>
+        </div>
+
+        <div class="test-grid">
+          <!-- Türkiye Butonları -->
+          <div class="test-col tr-col">
+            <div class="test-col-title">🇹🇷 TÜRKİYE (İZLEYİCİLER) DESTEK TESTİ</div>
+            <div class="test-buttons">
+              <button data-action="small_gift" class="btn-rose">[1 / A] Gül 🌹 (+50 Hız)</button>
+              <button data-action="big_gift" class="btn-wand">[2 / Z] Asa 🪄 (+500 MVP)</button>
+              <button data-action="like" class="btn-like">[Q] 15 Beğeni ❤️ (+5 Hız)</button>
+              <button data-action="chat" class="btn-chat">[C] Tezahürat 💬 (+2 Hız)</button>
+            </div>
+          </div>
+
+          <!-- Bot Trol Butonu -->
+          <div class="test-col bot-col">
+            <div class="test-col-title">🤖 BOT (RAKİP) TROL KAPISI TESTİ</div>
+            <div class="test-buttons">
+              <button data-action="troll_gift" class="btn-troll">[S / X] Dondurma 🍦 (+100 Bot Hızı)</button>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Socket.io İstemcisi ve Yarış Motoru -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    if (typeof io === 'undefined') {
+      const cdnScript = document.createElement('script');
+      cdnScript.src = 'https://cdn.socket.io/4.7.5/socket.io.min.js';
+      document.head.appendChild(cdnScript);
+    }
+  </script>
+  <script src="game.js"></script>
+</body>
+</html>
