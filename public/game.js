@@ -152,6 +152,8 @@
   // Liderlik durumu: 'tr' | 'bot'
   let currentLeader = 'tr';
   let timeSinceLastTrGift = 0;
+  let botMode = 'stalk'; // 'cooldown' | 'stalk' | 'attack' | 'pacing'
+  let botStateTimer = 0;
 
   // Bu turda en çok puan kazandıran izleyiciler (uniqueId -> { nickname, avatar, points })
   const roundContributors = new Map();
@@ -161,6 +163,7 @@
   const floatingAvatars = [];
   const confettiParticles = [];
   const shockwaves = [];
+  let screenShakeAmount = 0;
 
   const carTr = {
     teamId: 1,
@@ -271,6 +274,7 @@
       // 1) TROL KAPISI: Sadece Dondurma Bot'a kalıcı hız verir
       carBot.speed += boost; // Kalıcı +100 Hız
       carBot.nitroIntensity = Math.min(1.8, carBot.nitroIntensity + 0.8);
+      screenShakeAmount = 14;
       spawnShockwave(carBot.x, carBot.y, '#00d9ff');
       spawnExhaustBurst(carBot, 20, '#00d9ff');
       showTrollBanner(event);
@@ -285,6 +289,7 @@
     if (event.type === 'big_gift') {
       // Büyük Hediye (+500 Ultra Hız & 👑 Milli Kahraman)
       carTr.nitroIntensity = 2.2;
+      screenShakeAmount = 26;
       spawnShockwave(carTr.x, carTr.y, '#ff1e38');
       spawnExhaustBurst(carTr, 35, '#ffcc00', true);
       showMVPBanner(event);
@@ -292,6 +297,7 @@
     } else if (event.type === 'small_gift') {
       // Gül (+50 Hız)
       carTr.nitroIntensity = Math.min(1.5, carTr.nitroIntensity + 0.65);
+      screenShakeAmount = 8;
       spawnExhaustBurst(carTr, 16, '#ff1e38');
       playNitroSound(false);
     } else if (event.type === 'like') {
@@ -406,25 +412,45 @@
       timeSinceLastTrGift += dt;
 
       // 1) BOT AKILLI VE TEHDİTKÂR ADRENALİN MOTORU
-      // Bot her saniye otomatik hızlanır
-      carBot.speed += 2.2 * dt;
+      // Bot her zaman önde kalmaz; bazen arayı yavaşça kapatır, bazen atak yapıp öne geçer
+      botStateTimer += dt;
+      const gap = carTr.distance - carBot.distance; // Pozitif: TR önde, Negatif: Bot önde
 
-      const gap = carTr.distance - carBot.distance; // Pozitif = Türkiye önde, Negatif = Bot önde
+      if (timeSinceLastTrGift < 3.0) {
+        // A) RAHATLAMA / ZAFER HİSSİ (İzleyici yeni hediye attı)
+        // Bot TR'nin hızının biraz altında kalır, TR'nin 40-90m öne geçmesine izin verir
+        botMode = 'cooldown';
+        const relaxedSpeed = Math.max(BASE_SPEED, carTr.speed - 10);
+        carBot.speed += (relaxedSpeed - carBot.speed) * 0.45 * dt;
+        dom.botTensionText.textContent = '🟢 İZLEYİCİ BASKISI';
+      } else if (gap > 10) {
+        // B) SİNSİ TAKİP: ARAYI YAVAŞÇA KAPATMA
+        // Hediye akışı durdu! Bot TR'den biraz daha hızlı giderek farkı sinsi sinsi kapatır
+        botMode = 'stalk';
+        const catchupSpeed = carTr.speed + 10 + Math.min(gap * 0.12, 22);
+        carBot.speed += (catchupSpeed - carBot.speed) * 0.4 * dt;
+        carBot.nitroIntensity = Math.min(1.2, carBot.nitroIntensity + 0.25 * dt);
 
-      if (gap > 80) {
-        // Türkiye arayı açtığında Bot yavaş yavaş hızlanıp arayı kapatır
-        const targetBotSpeed = carTr.speed + 14 + Math.min(gap * 0.08, 90);
-        carBot.speed += (targetBotSpeed - carBot.speed) * 0.45 * dt;
-        carBot.nitroIntensity = Math.min(1.4, carBot.nitroIntensity + 0.3 * dt);
-        dom.botTensionText.textContent = '⚡ ARAYI KAPATIYOR!';
-      } else if (timeSinceLastTrGift > 2.8) {
-        // Hediye akışı duraksadığında Bot Türkiye'nin önüne geçecek şekilde hızlanır!
-        const overtakeSpeed = Math.max(carBot.speed, carTr.speed + 22);
-        carBot.speed += (overtakeSpeed - carBot.speed) * 0.8 * dt;
-        carBot.nitroIntensity = Math.min(1.6, carBot.nitroIntensity + 0.5 * dt);
-        dom.botTensionText.textContent = '🔥 ATAĞA GEÇTİ!';
+        if (gap < 35) {
+          dom.botTensionText.textContent = `⚠️ TAMPONDA! FARK: ${Math.round(gap)}M`;
+        } else {
+          dom.botTensionText.textContent = `⚡ FARKI KAPATIYOR: ${Math.round(gap)}M`;
+        }
+      } else if (gap <= 10 && gap >= -45) {
+        // C) ANİ ATAK: ÖNE GEÇME (PANİK TETİKLEYİCİ)
+        // Fark kapandı! Bot atağa kalkar, TR'nin 20-40 metre önüne geçerek izleyicide hediye panik duygusu yaratır
+        botMode = 'attack';
+        const overtakeSpeed = Math.max(carBot.speed, carTr.speed + 25);
+        carBot.speed += (overtakeSpeed - carBot.speed) * 0.75 * dt;
+        carBot.nitroIntensity = Math.min(1.7, carBot.nitroIntensity + 0.45 * dt);
+        dom.botTensionText.textContent = '🔥 DÜŞMAN ATAKTA!';
       } else {
-        dom.botTensionText.textContent = '🤖 TEHDİT MOTORU';
+        // D) FARKI SABİTLEME (İzleyiciyi umutsuzluğa düşürmez)
+        // Bot 45 metreden fazla açılmaz; TR'nin tek bir Gül (+50) veya beğeniyle geri geçebileceği mesafede kalır
+        botMode = 'pacing';
+        const pacingSpeed = carTr.speed + 4;
+        carBot.speed += (pacingSpeed - carBot.speed) * 0.5 * dt;
+        dom.botTensionText.textContent = '⚠️ ÖNDE (TEHLİKE)';
       }
 
       // 2) MESAFE İLERLEMESİ (10.000 Metre Hesabı)
@@ -716,9 +742,19 @@
   function render() {
     ctx.clearRect(0, 0, WIDTH, HEIGHT);
 
+    ctx.save();
+    if (screenShakeAmount > 0.4) {
+      const sx = (Math.random() - 0.5) * screenShakeAmount;
+      const sy = (Math.random() - 0.5) * screenShakeAmount;
+      ctx.translate(sx, sy);
+      screenShakeAmount *= 0.88;
+    }
+
     drawParallaxRoadside();
     drawRoadTrack();
-    drawFinishLineIfNear();
+    drawRoadMeterMarkings();
+    drawFinishLine();
+    drawTurboSpeedStreaks();
     drawShockwaves();
     drawExhaustParticles();
 
@@ -729,6 +765,28 @@
     // Uçan hediye avatarlarını ve konfetileri çiz
     drawFloatingAvatars();
     drawConfetti();
+
+    ctx.restore();
+  }
+
+  function drawTurboSpeedStreaks() {
+    const intensity = Math.max(carTr.nitroIntensity, carBot.nitroIntensity);
+    if (intensity < 0.35 && carTr.speed < 260) return;
+
+    ctx.save();
+    const streakCount = Math.floor(10 + intensity * 24);
+    ctx.lineWidth = 2 + intensity * 2;
+    for (let i = 0; i < streakCount; i++) {
+      const rx = ROAD_LEFT + Math.random() * ROAD_WIDTH;
+      const ry = Math.random() * HEIGHT;
+      const rlen = 60 + Math.random() * 180 * intensity;
+      ctx.strokeStyle = Math.random() > 0.4 ? 'rgba(255, 255, 255, 0.28)' : 'rgba(255, 204, 0, 0.4)';
+      ctx.beginPath();
+      ctx.moveTo(rx, ry);
+      ctx.lineTo(rx, ry + rlen);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   function drawParallaxRoadside() {
@@ -800,34 +858,166 @@
     ctx.restore();
   }
 
-  function drawFinishLineIfNear() {
-    const maxDist = Math.max(carTr.distance, carBot.distance);
-    if (maxDist < 9200) return;
+  /**
+   * Yol Üzerindeki Metre Yazıları ve Kilometre Taşları
+   * Arabalar 10.000 metre boyunca ilerledikçe yoldan aşağı doğru akar
+   */
+  function drawRoadMeterMarkings() {
+    const PX_PER_METER = 2.4;
+    const leaderDist = Math.max(carTr.distance, carBot.distance);
+    const leaderY = Math.min(carTr.y, carBot.y);
 
-    // 10.000 metreye yaklaşıldığında ekranda damalı bitiş çizgisi belirir
-    const progressToFinish = (maxDist - 9200) / 800; // 0..1
-    const finishY = 380 + (1 - progressToFinish) * 450;
+    const minVisDist = Math.max(0, leaderDist - 250);
+    const maxVisDist = Math.min(TARGET_DISTANCE, leaderDist + 650);
 
-    const squareSize = 28;
+    const startStep = Math.floor(minVisDist / 100) * 100;
+    const endStep = Math.ceil(maxVisDist / 100) * 100;
+
+    for (let d = startStep; d <= endStep; d += 100) {
+      if (d <= 0 || d >= TARGET_DISTANCE) continue;
+
+      const screenY = leaderY - (d - leaderDist) * PX_PER_METER;
+      if (screenY < -80 || screenY > HEIGHT + 80) continue;
+
+      const isMajor = d % 500 === 0;
+      const isQuarter = d % 250 === 0 && !isMajor;
+
+      ctx.save();
+      if (isMajor) {
+        // 500M, 1000M, 2500M, 5000M gibi BÜYÜK KİLOMETRE TAŞLARI
+        ctx.strokeStyle = 'rgba(255, 204, 0, 0.65)';
+        ctx.lineWidth = 4;
+        ctx.setLineDash([22, 14]);
+        ctx.beginPath();
+        ctx.moveTo(ROAD_LEFT + 12, screenY);
+        ctx.lineTo(ROAD_RIGHT - 12, screenY);
+        ctx.stroke();
+
+        let label = `🏁 ${d.toLocaleString('tr-TR')} M`;
+        if (d === 5000) label = `⚡ 5.000 M (YARI YOL) ⚡`;
+        else if (d === 9000) label = `🔥 9.000 M (SON 1.000M) 🔥`;
+        else if (d === 9500) label = `⚠️ 9.500 M (SON DÜZLÜK) ⚠️`;
+
+        ctx.font = '900 24px Orbitron, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const tw = ctx.measureText(label).width;
+
+        // Yol üstü tabela arka planı
+        ctx.fillStyle = 'rgba(6, 10, 20, 0.94)';
+        ctx.strokeStyle = '#ffcc00';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.roundRect(WIDTH * 0.5 - tw * 0.5 - 20, screenY - 22, tw + 40, 44, 10);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffea00';
+        ctx.shadowColor = '#ffcc00';
+        ctx.shadowBlur = 14;
+        ctx.fillText(label, WIDTH * 0.5, screenY);
+      } else if (isQuarter) {
+        // 250M, 750M, 1250M çeyrek kilometre çizgileri
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([16, 12]);
+        ctx.beginPath();
+        ctx.moveTo(ROAD_LEFT + 25, screenY);
+        ctx.lineTo(ROAD_RIGHT - 25, screenY);
+        ctx.stroke();
+
+        ctx.font = '800 20px Orbitron, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 4;
+        ctx.fillText(`${d.toLocaleString('tr-TR')} M`, WIDTH * 0.5, screenY - 14);
+      } else {
+        // 100M ara çizgiler
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([12, 12]);
+        ctx.beginPath();
+        ctx.moveTo(ROAD_LEFT + 40, screenY);
+        ctx.lineTo(ROAD_RIGHT - 40, screenY);
+        ctx.stroke();
+
+        ctx.font = '700 16px Orbitron, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+        ctx.fillText(`${d}M`, WIDTH * 0.5, screenY - 10);
+      }
+      ctx.restore();
+    }
+  }
+
+  /**
+   * Bitiş Çizgisi ve 10.000M Damalı Bayrak Kemeri
+   */
+  function drawFinishLine() {
+    const leaderDist = Math.max(carTr.distance, carBot.distance);
+    const remainingMeters = Math.max(0, TARGET_DISTANCE - Math.round(leaderDist));
+
+    // 1) Ekranda sabit duran damalı üst bitiş çizgisi referansı (HUD'ın hemen altında Y = 440)
+    const squareSize = 26;
     const rows = 2;
     const cols = Math.floor(ROAD_WIDTH / squareSize);
+    const topFinishY = 440;
 
     ctx.save();
     ctx.shadowColor = '#ffcc00';
-    ctx.shadowBlur = 24;
+    ctx.shadowBlur = 20;
 
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         ctx.fillStyle = (r + c) % 2 === 0 ? '#ffffff' : '#111111';
-        ctx.fillRect(ROAD_LEFT + c * squareSize, finishY - r * squareSize, squareSize, squareSize);
+        ctx.fillRect(ROAD_LEFT + c * squareSize, topFinishY - r * squareSize, squareSize, squareSize);
       }
     }
 
+    // Üst Bitiş Çizgisi Tabela Yazısı
+    ctx.fillStyle = 'rgba(6, 10, 20, 0.9)';
+    ctx.strokeStyle = '#ffcc00';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(WIDTH * 0.5 - 280, topFinishY - 76, 560, 42, 10);
+    ctx.fill();
+    ctx.stroke();
+
     ctx.fillStyle = '#ffcc00';
-    ctx.font = '900 32px Orbitron, sans-serif';
+    ctx.font = '900 24px Orbitron, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('🏁 10.000M BİTİŞ ÇİZGİSİ 🏁', WIDTH * 0.5, finishY - 42);
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`🏁 10.000M BİTİŞ | KALAN: ${remainingMeters.toLocaleString('tr-TR')}M 🏁`, WIDTH * 0.5, topFinishY - 55);
     ctx.restore();
+
+    // 2) 10.000 metreye yaklaşıldığında (9.200M+) aşağı doğru süzülen fiziksel bitiş çizgisi
+    if (leaderDist >= 9200) {
+      const PX_PER_METER = 2.4;
+      const leaderY = Math.min(carTr.y, carBot.y);
+      const worldFinishY = leaderY - (TARGET_DISTANCE - leaderDist) * PX_PER_METER;
+
+      if (worldFinishY >= -60 && worldFinishY <= HEIGHT + 60) {
+        ctx.save();
+        ctx.shadowColor = '#00ff66';
+        ctx.shadowBlur = 28;
+
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < cols; c++) {
+            ctx.fillStyle = (r + c) % 2 === 0 ? '#ffffff' : '#000000';
+            ctx.fillRect(ROAD_LEFT + c * squareSize, worldFinishY - r * squareSize, squareSize, squareSize);
+          }
+        }
+
+        ctx.fillStyle = '#ffea00';
+        ctx.font = '900 34px Orbitron, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('🏆 10.000M BİTİŞ ÇİZGİSİ 🏆', WIDTH * 0.5, worldFinishY - 48);
+        ctx.restore();
+      }
+    }
   }
 
   function drawCar(car) {
